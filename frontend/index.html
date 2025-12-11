@@ -3,42 +3,119 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>نظام سفريات - تجربة</title>
+  <title>محاكاة بوت واتساب - لوحة</title>
+  <style>
+    body{font-family:Arial, sans-serif; padding:12px; direction:rtl}
+    .col{display:inline-block; vertical-align:top}
+    .user{width:48%}
+    .staff{width:48%; margin-right:2%}
+    textarea{width:100%}
+    .msg{border:1px solid #ddd;padding:8px;margin:6px 0;background:#f9f9f9}
+    .btn{padding:8px 12px;margin:6px}
+  </style>
 </head>
-<body style="font-family:Arial, sans-serif; padding:12px;">
-  <h2>نظام سفريات - واجهة بسيطة</h2>
-  <div>
-    <label>نص رسالة (اختبار):</label><br/>
-    <textarea id="msg" rows="3" style="width:100%;">السلام عليكم أريد تذكرة عدن الى القاهرة 20/12</textarea>
-    <br/><br/>
+<body>
+  <h2>محاكاة بوت واتساب + لوحة موظف</h2>
+  <div class="col user">
+    <h3>مستخدم - محاكاة دردشة</h3>
+    <label>الاسم (display):</label><br/>
+    <input id="u_name" value="Ammar" style="width:100%"/><br/>
     <label>رقم الهاتف:</label><br/>
-    <input id="phone" value="+967771234567" style="width:100%"/>
-    <br/><br/>
-    <button onclick="send()">إرسال (webhook)</button>
-    <button onclick="load()">تحميل المسافرين</button>
-    <pre id="out" style="background:#f4f4f4;padding:8px;"></pre>
+    <input id="u_phone" value="+967771234567" style="width:100%"/><br/>
+    <label>أدخل رسالة أو رقم:</label><br/>
+    <textarea id="u_msg" rows=3>السلام عليكم</textarea><br/>
+    <button onclick="sendMsg()" class="btn">إرسال</button>
+    <h4>الرد/النتيجة</h4>
+    <pre id="u_out" style="background:#fff;padding:8px;border:1px solid #eee;min-height:80px"></pre>
+  </div>
+
+  <div class="col staff">
+    <h3>لوحة الموظف</h3>
+    <div>
+      <label>فلترة حسب النية (intent):</label>
+      <select id="f_intent"><option value="">كلها</option>
+        <option value="booking">booking</option>
+        <option value="hotel">hotel</option>
+        <option value="visa">visa</option>
+        <option value="inquiry">inquiry</option>
+      </select>
+      <label>حالة:</label>
+      <select id="f_status"><option value="">الكل</option><option value="new">new</option><option value="handled">handled</option></select>
+      <button onclick="loadMessages()" class="btn">تحميل</button>
+    </div>
+    <div id="msgs" style="max-height:400px;overflow:auto;margin-top:8px"></div>
+
+    <h4>رد سريع جماعي (بث) على نفس النية (آخر 10 دقائق)</h4>
+    <label>نية (intent):</label><input id="c_intent" placeholder="مثال: booking"/><br/>
+    <label>نص الرد:</label><br/>
+    <textarea id="c_text" rows=3></textarea><br/>
+    <button onclick="broadcast()" class="btn">أرسل بث للنية</button>
   </div>
 
 <script>
-const API_BASE = ""; // leave empty => same domain when hosted alongside backend
+const API_BASE = "";
 
-async function send(){
-  const text = document.getElementById('msg').value;
-  const phone = document.getElementById('phone').value;
+async function sendMsg(){
+  const name = document.getElementById('u_name').value;
+  const phone = document.getElementById('u_phone').value;
+  const text = document.getElementById('u_msg').value;
   const res = await fetch('/webhook/whatsapp', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({text, phone})
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({from_number: phone, display_name: name, message: text})
   });
   const data = await res.json();
-  document.getElementById('out').innerText = JSON.stringify(data, null, 2);
+  document.getElementById('u_out').innerText = JSON.stringify(data, null, 2);
 }
 
-async function load(){
-  const res = await fetch('/api/passengers/recent');
-  const data = await res.json();
-  document.getElementById('out').innerText = JSON.stringify(data, null, 2);
+async function loadMessages(){
+  const intent = document.getElementById('f_intent').value;
+  const status = document.getElementById('f_status').value;
+  const url = `/api/messages?intent=${encodeURIComponent(intent)}&status=${encodeURIComponent(status)}&minutes=60`;
+  const res = await fetch(url);
+  const arr = await res.json();
+  const el = document.getElementById('msgs');
+  el.innerHTML = '';
+  arr.forEach(m => {
+    const d = document.createElement('div');
+    d.className='msg';
+    d.innerHTML = `
+      <b>#${m.id}</b> ${m.display_name||''} ${m.phone}<br/>
+      <i>intent:</i> ${m.intent} <i>status:</i> ${m.status} <br/>
+      <b>نص:</b> ${m.raw_message} <br/>
+      <b>وجهة:</b> ${m.destination||'-'} | تاريخ:${m.travel_date||'-'} | بالغ:${m.adults} | أطفال:${m.children} | رضيع:${m.infants} <br/>
+      <b>رد الموظف:</b> ${m.staff_reply||'-'} <br/>
+      <button onclick="replySingle(${m.id})" class="btn">أجب</button>
+      <input id="rep_${m.id}" placeholder="نص الرد" style="width:70%"/>
+    `;
+    el.appendChild(d);
+  });
 }
+
+async function replySingle(mid){
+  const txt = document.getElementById('rep_'+mid).value;
+  if(!txt){ alert('ضع نص الرد'); return; }
+  const res = await fetch('/api/staff/reply', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({message_ids:[mid], reply_text:txt})
+  });
+  const data = await res.json();
+  alert('done updated: '+JSON.stringify(data));
+  loadMessages();
+}
+
+async function broadcast(){
+  const intent = document.getElementById('c_intent').value;
+  const txt = document.getElementById('c_text').value;
+  if(!intent||!txt){ alert('عبي الحقول'); return; }
+  const res = await fetch('/api/staff/reply', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({intent:intent, reply_text:txt})
+  });
+  const data = await res.json();
+  alert('Broadcast updated ids: '+JSON.stringify(data.ids));
+  loadMessages();
+}
+
 </script>
 </body>
 </html>
