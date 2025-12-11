@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>نظام سفريات - تجربة</title>
+</head>
+<body style="font-family:Arial, sans-serif; padding:12px;">
+  <h2>نظام سفريات - واجهة بسيطة</h2>
+  <div>
+    <label>نص رسالة (اختبار):</label><br/>
+    <textarea id="msg" rows="3" style="width:100%;">السلام عليكم أريد تذكرة عدن الى القاهرة 20/12</textarea>
+    <br/><br/>
+    <label>رقم الهاتف:</label><br/>
+    <input id="phone" value="+967771234567" style="width:100%"/>
+    <br/><br/>
+    <button onclick="send()">إرسال (webhook)</button>
+    <button onclick="load()">تحميل المسافرين</button>
+    <pre id="out" style="background:#f4f4f4;padding:8px;"></pre>
+  </div>
+
+<script>
+const API_BASE = ""; // leave empty => same domain when hosted alongside backend
+
+async function send(){
+  const text = document.getElementById('msg').value;
+  const phone = document.getElementById('phone').value;
+  const res = await fetch('/webhook/whatsapp', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({text, phone})
+  });
+  const data = await res.json();
+  document.getElementById('out').innerText = JSON.stringify(data, null, 2);
+}
+
+async function load(){
+  const res = await fetch('/api/passengers/recent');
+  const data = await res.json();
+  document.getElementById('out').innerText = JSON.stringify(data, null, 2);
+}
+</script>
+</body>
+</html>
